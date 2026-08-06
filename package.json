@@ -1,0 +1,60 @@
+{
+  "name": "ffmpeg-wasm-farm",
+  "version": "0.2.1",
+  "description": "Multicore browser transcoding by farming independent FFmpeg.wasm segments across Web Workers.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "examples",
+    "src",
+    "dist",
+    "demo",
+    "README.md",
+    "DESIGN.md",
+    "REVIEW.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "demo": "npm run build && vite --config demo/vite.config.ts",
+    "demo:build": "npm run build && vite build --config demo/vite.config.ts",
+    "demo:typecheck": "tsc -p demo/tsconfig.json",
+    "check": "npm run test && npm run demo:typecheck"
+  },
+  "keywords": [
+    "ffmpeg",
+    "webassembly",
+    "wasm",
+    "video",
+    "multicore",
+    "web-worker"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@ffmpeg/ffmpeg": ">=0.12.14",
+    "@ffmpeg/core": ">=0.12.10"
+  },
+  "devDependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "typescript": "^5.8.3",
+    "vite": "^8.1.5"
+  },
+  "sideEffects": false,
+  "peerDependenciesMeta": {
+    "@ffmpeg/ffmpeg": {
+      "optional": true
+    },
+    "@ffmpeg/core": {
+      "optional": true
+    }
+  }
+}

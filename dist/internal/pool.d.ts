@@ -1,0 +1,2 @@
+export declare function runIndexedPool<T, R>(workers: readonly T[], itemCount: number, task: (worker: T, workerIndex: number, itemIndex: number) => Promise<R>): Promise<R[]>;
+//# sourceMappingURL=pool.d.ts.map

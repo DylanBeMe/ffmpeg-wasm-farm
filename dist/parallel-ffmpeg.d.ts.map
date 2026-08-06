@@ -1,0 +1,1 @@
+{"version":3,"file":"parallel-ffmpeg.d.ts","sourceRoot":"","sources":["../src/parallel-ffmpeg.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EACV,WAAW,EAIX,aAAa,EAKb,wBAAwB,EACxB,uBAAuB,EAExB,MAAM,YAAY,CAAC;AAuCpB,qBAAa,cAAc;;gBAGN,YAAY,EAAE,aAAa;WAOhC,sBAAsB,IAAI,MAAM;IAOjC,SAAS,CACpB,KAAK,EAAE,WAAW,EAClB,OAAO,EAAE,wBAAwB,GAChC,OAAO,CAAC,uBAAuB,CAAC;CA6bpC"}
