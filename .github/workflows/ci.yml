@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning::package-lock.json is missing; using npm install instead of npm ci"
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Run library tests and demo typecheck
+        run: npm run check
+
+      - name: Build production demo
+        if: matrix.node == 24
+        run: npm run demo:build
+
+      - name: Run native FFmpeg smoke test
+        if: matrix.node == 24
+        shell: bash
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes ffmpeg
+          fi
+          npm run test:smoke
+
+      - name: Pack npm artifact
+        if: matrix.node == 24
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          npm pack --pack-destination artifacts
+
+      - name: Upload npm artifact
+        if: matrix.node == 24
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 14

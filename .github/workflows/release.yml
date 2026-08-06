@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm and GitHub Releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js and npm registry
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Validate tag and prepare package metadata
+        run: node scripts/prepare-release.mjs "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning::package-lock.json is missing; using npm install instead of npm ci"
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Run release checks
+        run: |
+          npm run check
+          npm run demo:build
+          npm run package:check
+
+      - name: Run native FFmpeg smoke test
+        shell: bash
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes ffmpeg
+          fi
+          npm run test:smoke
+
+      - name: Build release tarball
+        id: pack
+        shell: bash
+        run: |
+          mkdir -p release
+          npm pack --json --pack-destination release > release/pack.json
+
+          package_file="$(node --input-type=module -e '
+            import fs from "node:fs";
+            const result = JSON.parse(fs.readFileSync("release/pack.json", "utf8"));
+            process.stdout.write(result[0].filename);
+          ')"
+
+          package_name="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).name')"
+          package_version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
+          dist_tag="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version.includes("-") ? "next" : "latest"')"
+
+          echo "package_path=release/${package_file}" >> "${GITHUB_OUTPUT}"
+          echo "package_name=${package_name}" >> "${GITHUB_OUTPUT}"
+          echo "package_version=${package_version}" >> "${GITHUB_OUTPUT}"
+          echo "dist_tag=${dist_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check whether this version is already published
+        id: published
+        shell: bash
+        run: |
+          package="${{ steps.pack.outputs.package_name }}@${{ steps.pack.outputs.package_version }}"
+          if npm view "${package}" version --json >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+            echo "${package} already exists on npm; publish will be skipped."
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Publish package to npm
+        if: steps.published.outputs.exists != 'true'
+        run: npm publish "${{ steps.pack.outputs.package_path }}" --access public --tag "${{ steps.pack.outputs.dist_tag }}"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_PATH: ${{ steps.pack.outputs.package_path }}
+        shell: bash
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${PACKAGE_PATH}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${PACKAGE_PATH}" \
+              --verify-tag \
+              --generate-notes \
+              --title "${GITHUB_REF_NAME}"
+          fi

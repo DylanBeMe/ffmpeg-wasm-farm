@@ -17,6 +17,7 @@
     "dist",
     "demo",
     "README.md",
+    "RELEASING.md",
     "DESIGN.md",
     "REVIEW.md",
     "LICENSE"
@@ -27,7 +28,9 @@
     "demo": "npm run build && vite --config demo/vite.config.ts",
     "demo:build": "npm run build && vite build --config demo/vite.config.ts",
     "demo:typecheck": "tsc -p demo/tsconfig.json",
-    "check": "npm run test && npm run demo:typecheck"
+    "check": "npm run test && npm run demo:typecheck",
+    "test:smoke": "bash tests/real-ffmpeg-smoke.sh",
+    "package:check": "npm pack --dry-run"
   },
   "keywords": [
     "ffmpeg",

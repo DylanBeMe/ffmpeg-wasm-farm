@@ -129,4 +129,6 @@ npm run check
 bash tests/real-ffmpeg-smoke.sh
 ```
 
+GitHub Actions configuration is included for Node.js 20/22/24 CI, native FFmpeg smoke testing, npm package artifacts, Dependabot updates, and tag-driven npm/GitHub releases. See [`RELEASING.md`](./RELEASING.md) for the one-time setup and release procedure.
+
 The package has no runtime dependency on a concrete FFmpeg class. Its FFmpeg peer packages are optional, and it accepts a structural factory so applications control the exact build, asset URLs, and bundling strategy.
