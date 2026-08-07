@@ -97,7 +97,11 @@ jobs:
 
       - name: Publish package to npm
         if: steps.published.outputs.exists != 'true'
-        run: npm publish "${{ steps.pack.outputs.package_path }}" --access public --tag "${{ steps.pack.outputs.dist_tag }}"
+        env:
+          PACKAGE_PATH: ${{ steps.pack.outputs.package_path }}
+          DIST_TAG: ${{ steps.pack.outputs.dist_tag }}
+        shell: bash
+        run: npm publish "${GITHUB_WORKSPACE}/${PACKAGE_PATH}" --access public --tag "${DIST_TAG}"
 
       - name: Create or update GitHub Release
         env:
