@@ -18,6 +18,11 @@ const MIME_EXTENSIONS: Readonly<Record<string, string>> = {
   "video/x-msvideo": "avi",
 };
 
+export function binaryByteLength(input: BinaryInput): number {
+  if (input instanceof Uint8Array || input instanceof ArrayBuffer) return input.byteLength;
+  return input.size;
+}
+
 export async function toUint8Array(input: BinaryInput, preserve: boolean): Promise<Uint8Array> {
   if (input instanceof Uint8Array) {
     // SharedArrayBuffer cannot be transferred by @ffmpeg/ffmpeg. Copy it even
@@ -38,7 +43,8 @@ export function inferInputName(input: BinaryInput, explicit?: string): string {
   }
 
   if (typeof Blob !== "undefined" && input instanceof Blob) {
-    const extension = MIME_EXTENSIONS[input.type.toLowerCase()];
+    const mimeType = input.type.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    const extension = MIME_EXTENSIONS[mimeType];
     if (extension) return `input.${extension}`;
   }
 

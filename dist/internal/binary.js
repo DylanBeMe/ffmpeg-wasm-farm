@@ -15,6 +15,11 @@ const MIME_EXTENSIONS = {
     "video/x-matroska": "mkv",
     "video/x-msvideo": "avi",
 };
+export function binaryByteLength(input) {
+    if (input instanceof Uint8Array || input instanceof ArrayBuffer)
+        return input.byteLength;
+    return input.size;
+}
 export async function toUint8Array(input, preserve) {
     if (input instanceof Uint8Array) {
         // SharedArrayBuffer cannot be transferred by @ffmpeg/ffmpeg. Copy it even
@@ -35,7 +40,8 @@ export function inferInputName(input, explicit) {
         return sanitizeFilename(input.name);
     }
     if (typeof Blob !== "undefined" && input instanceof Blob) {
-        const extension = MIME_EXTENSIONS[input.type.toLowerCase()];
+        const mimeType = input.type.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+        const extension = MIME_EXTENSIONS[mimeType];
         if (extension)
             return `input.${extension}`;
     }

@@ -1,7 +1,8 @@
-import type { AudioStrategy } from "../types.js";
+import type { AudioStrategy, IntermediateStorage } from "../types.js";
 
 const MAX_WORKER_COUNT = 16;
 const AUDIO_STRATEGIES: ReadonlySet<string> = new Set(["per-segment", "single-pass", "drop"]);
+const INTERMEDIATE_STORAGE_MODES: ReadonlySet<string> = new Set(["auto", "memory", "opfs"]);
 const MANAGED_ENCODING_OPTIONS = new Set([
   "-f",
   "-filter_complex",
@@ -39,6 +40,7 @@ export function validateOptions(args: {
   audioStrategy: AudioStrategy;
   audioArgs: string[];
   muxArgs: string[];
+  intermediateStorage: IntermediateStorage;
   execTimeoutMs?: number;
 }): void {
   if (typeof args.inputName !== "string") {
@@ -70,6 +72,9 @@ export function validateOptions(args: {
   }
   if (!AUDIO_STRATEGIES.has(args.audioStrategy)) {
     throw new Error('audioStrategy must be "per-segment", "single-pass", or "drop".');
+  }
+  if (!INTERMEDIATE_STORAGE_MODES.has(args.intermediateStorage)) {
+    throw new Error('intermediateStorage must be "auto", "memory", or "opfs".');
   }
 
   validateArgumentList("encodingArgs", args.encodingArgs);
@@ -126,27 +131,68 @@ export function buildAudioProbeArgs(args: {
   return [
     "-v",
     "error",
-    "-select_streams",
-    "a:0",
     "-show_entries",
-    "stream=index",
+    "format=start_time:stream=codec_type,start_time",
     "-of",
-    "csv=p=0",
+    "json",
     args.inputName,
     "-o",
     args.outputName,
   ];
 }
 
+export function parseMediaTimingProbe(value: string): {
+  hasAudio: boolean;
+  timelineBaselineSeconds: number;
+  videoOffsetSeconds: number;
+} {
+  let document: {
+    streams?: Array<{ codec_type?: string; start_time?: string }>;
+  };
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new TypeError("Probe document must be an object.");
+    }
+    document = parsed as typeof document;
+  } catch (error) {
+    throw new Error("Audio stream probe returned invalid JSON.", { cause: error });
+  }
+
+  const streams = Array.isArray(document.streams) ? document.streams : [];
+  const audio = streams.find((stream) => stream?.codec_type === "audio");
+  if (!audio) return { hasAudio: false, timelineBaselineSeconds: 0, videoOffsetSeconds: 0 };
+
+  const video = streams.find((stream) => stream?.codec_type === "video");
+  const audioStart = finiteTimestamp(audio.start_time) ?? 0;
+  const videoStart = finiteTimestamp(video?.start_time) ?? audioStart;
+  const baseline = Math.min(videoStart, audioStart);
+
+  return {
+    hasAudio: true,
+    timelineBaselineSeconds: baseline,
+    videoOffsetSeconds: Math.max(0, videoStart - baseline),
+  };
+}
+
 export function buildAudioArgs(args: {
   inputName: string;
   outputName: string;
   audioArgs: string[];
+  timelineBaselineSeconds?: number;
 }): string[] {
+  const timelineBaselineSeconds = args.timelineBaselineSeconds ?? 0;
+  if (!Number.isFinite(timelineBaselineSeconds)) {
+    throw new Error("timelineBaselineSeconds must be finite.");
+  }
   return [
     "-hide_banner",
     "-loglevel",
     "warning",
+    "-copyts",
+    ...(timelineBaselineSeconds === 0
+      ? []
+      : ["-itsoffset", String(-timelineBaselineSeconds)]),
     "-i",
     args.inputName,
     "-map",
@@ -195,12 +241,20 @@ export function buildAssembleArgs(args: {
   manifestName: string;
   outputName: string;
   audioName?: string;
+  videoOffsetSeconds?: number;
   muxArgs: string[];
 }): string[] {
+  const videoOffsetSeconds = args.videoOffsetSeconds ?? 0;
+  if (!Number.isFinite(videoOffsetSeconds) || videoOffsetSeconds < 0) {
+    throw new Error("videoOffsetSeconds must be a finite number >= 0.");
+  }
   const base = [
     "-hide_banner",
     "-loglevel",
     "warning",
+    ...(args.audioName && videoOffsetSeconds > 0
+      ? ["-itsoffset", String(videoOffsetSeconds)]
+      : []),
     "-f",
     "concat",
     "-safe",
@@ -214,6 +268,9 @@ export function buildAssembleArgs(args: {
       ...base,
       "-i",
       args.audioName,
+      // Each input normally gets rebased independently. Preserve the relative
+      // timestamps established during extraction/segment assembly instead.
+      "-copyts",
       "-map",
       "0:v:0?",
       "-map",
@@ -236,6 +293,12 @@ export function buildAssembleArgs(args: {
     ...args.muxArgs,
     args.outputName,
   ];
+}
+
+function finiteTimestamp(value: string | undefined): number | undefined {
+  if (value === undefined || value === "N/A") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function segmentName(index: number, prefix = "segment"): string {

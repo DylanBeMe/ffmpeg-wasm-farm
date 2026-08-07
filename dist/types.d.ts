@@ -38,6 +38,7 @@ export interface FFmpegEngine {
 }
 export type FFmpegFactory = () => FFmpegEngine;
 export type AudioStrategy = "per-segment" | "single-pass" | "drop";
+export type IntermediateStorage = "auto" | "memory" | "opfs";
 export type PipelineStage = "loading-planner" | "extracting-audio" | "splitting" | "loading-workers" | "transcoding" | "assembling" | "done";
 export interface FarmProgress {
     stage: PipelineStage;
@@ -81,6 +82,14 @@ export interface ParallelTranscodeOptions {
      * transferred to the FFmpeg worker. Set false only when detaching it is safe.
      */
     preserveInput?: boolean;
+    /** Optional hard byte limit checked before FFmpeg is loaded or the input is copied. */
+    maxInputBytes?: number;
+    /**
+     * Where source/encoded segment buffers wait between FFmpeg stages. "auto"
+     * uses Origin Private File System storage when available and falls back to
+     * the legacy in-memory behavior.
+     */
+    intermediateStorage?: IntermediateStorage;
     /** Stop the active pipeline. Running FFmpeg workers are terminated on abort. */
     signal?: AbortSignal;
     /** Per-FFmpeg-command timeout in milliseconds. Omit for no timeout. */

@@ -7,9 +7,9 @@ A pthread-enabled Emscripten build shares one WebAssembly memory across workers.
 This project uses coarse-grained temporal parallelism:
 
 1. A planner FFmpeg instance remuxes the source into keyframe-aligned Matroska segments.
-2. The planner transfers the segment buffers to JavaScript and terminates.
-3. Several independent single-thread FFmpeg instances transcode different segments concurrently.
-4. All but one worker terminate. The remaining worker receives the encoded segments, concatenates them, and performs the final mux.
+2. The planner moves each segment into the intermediate store and terminates. In `auto` mode this uses OPFS where available, with a transparent in-memory fallback.
+3. Several independent single-thread FFmpeg instances take source segments from the store, transcode them concurrently, and return encoded segments to the store.
+4. All but one worker terminate. The remaining worker takes encoded segments in source order, concatenates them, and performs the final mux.
 
 Every engine owns separate WebAssembly memory. A failed segment worker cannot corrupt another worker's heap, and the page does not need `SharedArrayBuffer` or COOP/COEP headers.
 
@@ -20,11 +20,11 @@ Every engine owns separate WebAssembly memory. A failed segment worker cannot co
 There is still an unavoidable memory cost:
 
 - one FFmpeg heap per active worker;
-- unprocessed source segments in JavaScript;
-- completed encoded segments waiting for assembly;
-- the final assembler heap.
+- the planner's MEMFS high-water mark while the source is being segmented;
+- one intermediate segment while it is transferred between storage and an FFmpeg worker;
+- the final assembler's MEMFS high-water mark while concat/mux inputs and output coexist.
 
-The default recommendation is capped at four workers and user-supplied concurrency is capped at 16. Applications should lower concurrency for large files and memory-constrained devices.
+The old all-source-segments and all-encoded-segments JavaScript arrays are no longer retained when OPFS is available. Automatic worker selection is capped at four and scales down for large inputs and low reported device memory; user-supplied concurrency remains capped at 16. `maxInputBytes` provides an optional preflight guard. Fully bounded memory would require an FFmpeg core whose filesystem can read/write persistent storage directly (or true streaming stdin/stdout); the wrapper cannot remove MEMFS high-water marks by itself.
 
 ## Internal filesystem isolation
 
@@ -46,7 +46,7 @@ FFmpeg progress itself is best-effort, so stage transitions and completed segmen
 
 ## Audio handling
 
-`audioStrategy="single-pass"` uses ffprobe when available to detect an audio stream, encodes it once, and muxes it with the concatenated video. This avoids codec priming delay at every segment boundary. The mux does not add `-shortest` implicitly, because valid sources can contain audio that ends before the video; callers can opt into that truncation through `muxArgs`.
+`audioStrategy="single-pass"` uses ffprobe when available to detect an audio stream and measure the first video/audio stream timestamps. Audio extraction rebases both selected streams onto a common zero-based timeline, and the final mux preserves the resulting relative A/V offset instead of independently normalizing each input. This avoids codec priming delay at every segment boundary. The mux does not add `-shortest` implicitly, because valid sources can contain audio that ends before the video; callers can opt into that truncation through `muxArgs`.
 
 `per-segment` maps audio into every segment and stream-copies it unless the caller explicitly supplies audio-processing options. This avoids an accidental default audio encode and reduces work.
 

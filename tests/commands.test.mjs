@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   buildAssembleArgs,
   buildAudioProbeArgs,
+  buildAudioArgs,
   buildConcatManifest,
+  parseMediaTimingProbe,
   buildSegmentTranscodeArgs,
   buildSplitArgs,
   segmentName,
@@ -20,6 +22,7 @@ function validOptions(overrides = {}) {
     audioStrategy: "per-segment",
     audioArgs: [],
     muxArgs: [],
+    intermediateStorage: "auto",
     ...overrides,
   };
 }
@@ -73,6 +76,7 @@ test("assembler preserves the full video duration by default", () => {
   });
   assert.deepEqual(args.slice(-3), ["-movflags", "+faststart", "output.mp4"]);
   assert.equal(args.includes("-shortest"), false);
+  assert.equal(args.includes("-copyts"), true);
 
   const shortest = buildAssembleArgs({
     manifestName: "concat.txt",
@@ -83,10 +87,38 @@ test("assembler preserves the full video duration by default", () => {
   assert.equal(shortest.filter((token) => token === "-shortest").length, 1);
 });
 
-test("audio probe requests only the first audio stream", () => {
+test("audio probe requests A/V start timestamps", () => {
   const args = buildAudioProbeArgs({ inputName: "input.mp4", outputName: "probe.txt" });
-  assert.deepEqual(args.slice(args.indexOf("-select_streams"), args.indexOf("-show_entries")), ["-select_streams", "a:0"]);
+  assert.deepEqual(
+    args.slice(args.indexOf("-show_entries"), args.indexOf("input.mp4")),
+    ["-show_entries", "format=start_time:stream=codec_type,start_time", "-of", "json"],
+  );
   assert.deepEqual(args.slice(-2), ["-o", "probe.txt"]);
+});
+
+test("timing probe preserves relative A/V starts independent of absolute container time", () => {
+  assert.deepEqual(parseMediaTimingProbe(JSON.stringify({
+    streams: [
+      { codec_type: "video", start_time: "5.000000" },
+      { codec_type: "audio", start_time: "5.500000" },
+    ],
+  })), { hasAudio: true, timelineBaselineSeconds: 5, videoOffsetSeconds: 0 });
+  assert.deepEqual(parseMediaTimingProbe(JSON.stringify({
+    streams: [
+      { codec_type: "video", start_time: "5.500000" },
+      { codec_type: "audio", start_time: "5.000000" },
+    ],
+  })), { hasAudio: true, timelineBaselineSeconds: 5, videoOffsetSeconds: 0.5 });
+});
+
+test("audio extraction rebases timestamps to the selected A/V timeline", () => {
+  const args = buildAudioArgs({
+    inputName: "input.mkv",
+    outputName: "audio.mka",
+    audioArgs: ["-c:a", "copy"],
+    timelineBaselineSeconds: 5,
+  });
+  assert.deepEqual(args.slice(args.indexOf("-copyts"), args.indexOf("-i")), ["-copyts", "-itsoffset", "-5"]);
 });
 
 test("manifest is ordered and newline terminated", () => {
@@ -106,9 +138,10 @@ test("managed ffmpeg arguments are rejected in every argument group", () => {
   assert.throws(() => validateOptions(validOptions({ muxArgs: ["-c:v", "copy"] })), /muxArgs/);
 });
 
-test("unsafe concurrency and timeout values are rejected", () => {
+test("unsafe concurrency, timeout, and storage values are rejected", () => {
   assert.throws(() => validateOptions(validOptions({ workerCount: 17 })), /workerCount/);
   assert.throws(() => validateOptions(validOptions({ execTimeoutMs: 0 })), /execTimeoutMs/);
+  assert.throws(() => validateOptions(validOptions({ intermediateStorage: "disk" })), /intermediateStorage/);
 });
 
 test("runtime option shapes and strategy values are validated", () => {

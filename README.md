@@ -35,8 +35,12 @@ const controller = new AbortController();
 const result = await farm.transcode(file, {
   inputName: file.name,
   outputName: "output.mp4",
-  workerCount: ParallelFFmpeg.recommendedWorkerCount(),
+  workerCount: ParallelFFmpeg.recommendedWorkerCount(file.size),
   segmentSeconds: 12,
+  // Optional hard stop before allocating FFmpeg heaps for unexpectedly large uploads.
+  maxInputBytes: 2 * 1024 ** 3,
+  // "auto" spills intermediate segment buffers to OPFS where supported.
+  intermediateStorage: "auto",
 
   // Encode audio once to avoid codec priming delay at every segment boundary.
   audioStrategy: "single-pass",
@@ -84,15 +88,15 @@ The demo uses a single token-based theme for every tab, card, dialog state, log 
 
 ## Choosing concurrency
 
-Start with two to four workers. Each active worker owns a full FFmpeg WebAssembly heap, so matching a high-end desktop's full logical CPU count can exhaust browser memory. Automatic concurrency is capped at four and leaves one logical core for the browser.
+Start with two to four workers. Each active worker owns a full FFmpeg WebAssembly heap, so matching a high-end desktop's full logical CPU count can exhaust browser memory. Automatic concurrency is capped at four, leaves one logical core for the browser, and becomes more conservative as input size grows. Chromium's `navigator.deviceMemory`, when exposed, is used as an additional safety signal.
 
-Useful segment sizes are usually 8–20 seconds. Tiny segments increase startup and mux overhead; very large segments reduce load balancing.
+Intermediate source/audio/encoded buffers use `intermediateStorage: "auto"` by default. The farm spills them to the Origin Private File System (OPFS) when available, then releases each entry as soon as the next FFmpeg stage takes ownership. If OPFS is unavailable or a default-mode write fails, it transparently falls back to the previous in-memory behavior. Use `"memory"` to force the legacy path or `"opfs"` to require spill storage. This substantially lowers JavaScript heap retention but cannot remove planner/assembler MEMFS high-water marks inside ffmpeg.wasm itself.
 
-User-provided `workerCount` values are limited to 16 as a final guard against accidental memory exhaustion.
+Useful segment sizes are usually 8–20 seconds. Tiny segments increase startup and mux overhead; very large segments reduce load balancing. User-provided `workerCount` values are limited to 16 as a final guard against accidental memory exhaustion. Applications handling untrusted uploads can also set `maxInputBytes` so oversized inputs fail before the FFmpeg core is loaded or the input is copied.
 
 ## Audio strategies
 
-- `single-pass`: probe and encode audio once, transcode video segments in parallel, then mux them together. Best default for MP4 and WebM. The final mux preserves the full video duration; add `"-shortest"` to `muxArgs` only when deliberate truncation to the shorter stream is wanted.
+- `single-pass`: probe and encode audio once, transcode video segments in parallel, then mux them together. Best default for MP4 and WebM. The final mux preserves relative A/V stream start offsets as well as the full video duration; add `"-shortest"` to `muxArgs` only when deliberate truncation to the shorter stream is wanted.
 - `per-segment`: keep audio in each segment. Audio is stream-copied by default unless the encoding arguments explicitly request audio processing.
 - `drop`: produce video without audio.
 
@@ -132,3 +136,7 @@ bash tests/real-ffmpeg-smoke.sh
 GitHub Actions configuration is included for Node.js 20/22/24 CI, native FFmpeg smoke testing, npm package artifacts, Dependabot updates, and tag-driven npm/GitHub releases. See [`RELEASING.md`](./RELEASING.md) for the one-time setup and release procedure.
 
 The package has no runtime dependency on a concrete FFmpeg class. Its FFmpeg peer packages are optional, and it accepts a structural factory so applications control the exact build, asset URLs, and bundling strategy.
+
+## License
+
+MIT. See [`LICENSE`](./LICENSE).

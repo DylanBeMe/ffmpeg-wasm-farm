@@ -2,7 +2,7 @@ import type { BinaryInput, FFmpegFactory, ParallelTranscodeOptions, ParallelTran
 export declare class ParallelFFmpeg {
     #private;
     constructor(createEngine: FFmpegFactory);
-    static recommendedWorkerCount(): number;
+    static recommendedWorkerCount(inputBytes?: number): number;
     transcode(input: BinaryInput, options: ParallelTranscodeOptions): Promise<ParallelTranscodeResult>;
 }
 //# sourceMappingURL=parallel-ffmpeg.d.ts.map

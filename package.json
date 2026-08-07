@@ -1,6 +1,6 @@
 {
   "name": "ffmpeg-wasm-farm",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Multicore browser transcoding by farming independent FFmpeg.wasm segments across Web Workers.",
   "type": "module",
   "main": "./dist/index.js",

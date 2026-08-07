@@ -8,6 +8,7 @@ export type {
   FFmpegFactory,
   FFmpegLoadConfig,
   FFmpegMessageOptions,
+  IntermediateStorage,
   ParallelTranscodeOptions,
   ParallelTranscodeResult,
   PipelineStage,

@@ -29,7 +29,7 @@ The 0.2.0 review covered the TypeScript library, FFmpeg command construction, ca
 
 - Transfer-safe input handling now copies only when preservation is requested or a `SharedArrayBuffer` cannot be transferred.
 - Consumed source and encoded arrays are released as soon as ownership moves to an FFmpeg worker.
-- Worker concurrency is automatically capped at four and explicitly capped at sixteen to reduce accidental memory exhaustion.
+- Worker concurrency is automatically capped at four, scales down for large inputs/low reported device memory, and is explicitly capped at sixteen. Intermediate source/audio/encoded buffers spill to OPFS when available instead of accumulating in the main JavaScript heap.
 - Per-segment audio is stream-copied unless the caller requests audio processing.
 - The demo caches same-origin blob URLs for the FFmpeg core after the first load.
 - Activity logs are capped at 250 rendered rows to prevent unbounded DOM growth.
@@ -46,8 +46,8 @@ The 0.2.0 review covered the TypeScript library, FFmpeg command construction, ca
 
 ## Remaining architectural limits
 
-- Every active worker owns a full FFmpeg WebAssembly heap. Peak memory can still be high because source segments, encoded segments, and the final assembler coexist during parts of a run.
-- Encoded segments are retained until final assembly; a future streaming or persistent-assembler design could lower JavaScript heap pressure at the cost of another live FFmpeg instance or more scheduling complexity.
+- Every active worker owns a full FFmpeg WebAssembly heap. OPFS spill storage removes the largest wrapper-level JavaScript retention, but planner and assembler MEMFS high-water marks remain inherent to the current ffmpeg.wasm filesystem model.
+- Fully bounded memory would require a core that can read/write persistent storage directly, or true streaming stdin/stdout, so FFmpeg does not need whole intermediate files in MEMFS.
 - Segment-level parallelism is unsuitable for two-pass encoding, exact whole-file rate allocation, stateful temporal filters, and commands with multiple external inputs.
 - FFmpeg's progress signal is best-effort; stage transitions and completed segment counts are more reliable than codec-local percentages.
 

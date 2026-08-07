@@ -16,6 +16,10 @@ test("common container signatures are inferred for byte inputs", () => {
 
 test("blob MIME types are used when a filename is unavailable", () => {
   assert.equal(inferInputName(new Blob(["x"], { type: "video/webm" })), "input.webm");
+  assert.equal(
+    inferInputName(new Blob(["x"], { type: "video/mp4; codecs=avc1.42E01E" })),
+    "input.mp4",
+  );
 });
 
 test("unknown anonymous input requires an explicit filename", () => {
