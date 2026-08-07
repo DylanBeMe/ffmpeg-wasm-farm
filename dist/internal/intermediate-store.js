@@ -43,7 +43,7 @@ class HybridIntermediateStore {
                 const handle = await this.#directory.getFileHandle(fileName, { create: true });
                 const writable = await handle.createWritable();
                 try {
-                    await writable.write(data);
+                    await writable.write(toOpfsWriteChunk(data));
                     await writable.close();
                 }
                 catch (error) {
@@ -135,5 +135,13 @@ function uniqueSuffix() {
         // Fall through to a non-cryptographic collision-avoidance suffix.
     }
     return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+function toOpfsWriteChunk(data) {
+    if (typeof SharedArrayBuffer !== "undefined" && data.buffer instanceof SharedArrayBuffer) {
+        const copy = new Uint8Array(data.byteLength);
+        copy.set(data);
+        return copy;
+    }
+    return data;
 }
 //# sourceMappingURL=intermediate-store.js.map

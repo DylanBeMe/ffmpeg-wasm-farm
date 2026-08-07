@@ -1,7 +1,10 @@
 import type { IntermediateStorage } from "../types.js";
 
 interface WritableFileLike {
-  write(data: Uint8Array): Promise<void>;
+  // Match the DOM API exactly. TypeScript 5.9 no longer treats a generic
+  // Uint8Array<ArrayBufferLike> as a valid OPFS write chunk because it may
+  // be backed by SharedArrayBuffer.
+  write(data: FileSystemWriteChunkType): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -82,7 +85,7 @@ class HybridIntermediateStore implements IntermediateStore {
         const handle = await this.#directory.getFileHandle(fileName, { create: true });
         const writable = await handle.createWritable();
         try {
-          await writable.write(data);
+          await writable.write(toOpfsWriteChunk(data));
           await writable.close();
         } catch (error) {
           try {
@@ -171,4 +174,13 @@ function uniqueSuffix(): string {
     // Fall through to a non-cryptographic collision-avoidance suffix.
   }
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
+function toOpfsWriteChunk(data: Uint8Array): Uint8Array<ArrayBuffer> {
+  if (typeof SharedArrayBuffer !== "undefined" && data.buffer instanceof SharedArrayBuffer) {
+    const copy = new Uint8Array(data.byteLength);
+    copy.set(data);
+    return copy;
+  }
+  return data as Uint8Array<ArrayBuffer>;
 }

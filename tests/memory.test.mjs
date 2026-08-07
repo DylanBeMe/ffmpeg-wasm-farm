@@ -37,3 +37,70 @@ test("auto storage falls back to memory when OPFS is unavailable", async () => {
   assert.deepEqual([...await store.take("encoded_000000")], [9]);
   await store.dispose();
 });
+
+
+test("OPFS writes normalize SharedArrayBuffer-backed views", async () => {
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  let written;
+  const files = new Map();
+
+  const directory = {
+    async getFileHandle(name) {
+      return {
+        async createWritable() {
+          return {
+            async write(data) {
+              written = data;
+              files.set(name, new Uint8Array(data));
+            },
+            async close() {},
+          };
+        },
+        async getFile() {
+          return new Blob([files.get(name)]);
+        },
+      };
+    },
+    async removeEntry(name) {
+      files.delete(name);
+    },
+  };
+
+  const root = {
+    async getDirectoryHandle() {
+      return directory;
+    },
+    async removeEntry() {},
+  };
+
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      storage: {
+        async getDirectory() {
+          return root;
+        },
+      },
+    },
+  });
+
+  try {
+    const sourceBuffer = new SharedArrayBuffer(3);
+    const source = new Uint8Array(sourceBuffer);
+    source.set([4, 5, 6]);
+
+    const store = await createIntermediateStore("opfs", "test_");
+    await store.put("encoded_000000", source);
+
+    assert.ok(written instanceof Uint8Array);
+    assert.ok(written.buffer instanceof ArrayBuffer);
+    assert.deepEqual([...await store.take("encoded_000000")], [4, 5, 6]);
+    await store.dispose();
+  } finally {
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, "navigator", originalNavigator);
+    } else {
+      delete globalThis.navigator;
+    }
+  }
+});
