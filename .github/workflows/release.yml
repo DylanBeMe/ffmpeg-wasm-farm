@@ -78,7 +78,7 @@ jobs:
           package_version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
           dist_tag="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version.includes("-") ? "next" : "latest"')"
 
-          echo "package_path=release/${package_file}" >> "${GITHUB_OUTPUT}"
+          echo "package_path=./release/${package_file}" >> "${GITHUB_OUTPUT}"
           echo "package_name=${package_name}" >> "${GITHUB_OUTPUT}"
           echo "package_version=${package_version}" >> "${GITHUB_OUTPUT}"
           echo "dist_tag=${dist_tag}" >> "${GITHUB_OUTPUT}"
